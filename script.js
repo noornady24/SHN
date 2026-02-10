@@ -1,3 +1,23 @@
+// --- FIREBASE CONFIGURATION & IMPORTS ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyBnGRKtuNq37uFTVs4n16jWshKu5rMaXnQ",
+    authDomain: "project-3403979804090393783.firebaseapp.com",
+    projectId: "project-3403979804090393783",
+    storageBucket: "project-3403979804090393783.firebasestorage.app",
+    messagingSenderId: "200296118651",
+    appId: "1:200296118651:web:aff0e8f1615f2bdb78a5de",
+    measurementId: "G-ZNF0M7D6J9"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getFirestore(app);
+
 // --- DATA & CONFIGURATION ---
 
 const ADMIN_EMAIL = "noornady00@gmail.com";
@@ -28,14 +48,14 @@ const INITIAL_ADMIN = {
 // --- GLOBAL STATE MANAGEMENT ---
 
 const state = {
-    view: 'landing', // landing, login, signup, student-dash, admin-dash, course-view
+    view: 'landing', 
     users: [],
     courses: [],
     currentUser: null,
     selectedCourseId: null,
     notification: null,
     
-    // UI Local States (replaces useState in components)
+    // UI Local States
     loginEmail: '',
     loginPass: '',
     signupForm: { name: '', email: '', password: '', mobile: '', grade: 'Year 1' },
@@ -61,22 +81,30 @@ const state = {
 
 // --- INITIALIZATION ---
 
-function init() {
-    const storedUsers = JSON.parse(localStorage.getItem('minia_users') || '[]');
-    const storedCourses = JSON.parse(localStorage.getItem('minia_courses') || '[]');
+async function init() {
+    // Show loading state implicitly by waiting
+    try {
+        const docRef = doc(db, "minia_data", "app_storage");
+        const docSnap = await getDoc(docRef);
 
-    if (storedUsers.length === 0) {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            state.users = data.users || [INITIAL_ADMIN];
+            state.courses = data.courses || INITIAL_SUBJECTS;
+        } else {
+            // First time run: Seed DB
+            state.users = [INITIAL_ADMIN];
+            state.courses = INITIAL_SUBJECTS;
+            await setDoc(docRef, {
+                users: state.users,
+                courses: state.courses
+            });
+        }
+    } catch (e) {
+        console.error("Firebase connection error:", e);
+        // Fallback to defaults if offline
         state.users = [INITIAL_ADMIN];
-        localStorage.setItem('minia_users', JSON.stringify([INITIAL_ADMIN]));
-    } else {
-        state.users = storedUsers;
-    }
-
-    if (storedCourses.length === 0) {
         state.courses = INITIAL_SUBJECTS;
-        localStorage.setItem('minia_courses', JSON.stringify(INITIAL_SUBJECTS));
-    } else {
-        state.courses = storedCourses;
     }
 
     render();
@@ -84,16 +112,30 @@ function init() {
 
 // --- PERSISTENCE & UTILS ---
 
-function saveUsers(newUsers) {
+async function saveUsers(newUsers) {
     state.users = newUsers;
-    localStorage.setItem('minia_users', JSON.stringify(newUsers));
-    render();
+    render(); // Update UI immediately
+    try {
+        await setDoc(doc(db, "minia_data", "app_storage"), { 
+            users: newUsers,
+            courses: state.courses 
+        }, { merge: true });
+    } catch (e) {
+        showNotification("Error saving data to cloud", "error");
+    }
 }
 
-function saveCourses(newCourses) {
+async function saveCourses(newCourses) {
     state.courses = newCourses;
-    localStorage.setItem('minia_courses', JSON.stringify(newCourses));
-    render();
+    render(); // Update UI immediately
+    try {
+        await setDoc(doc(db, "minia_data", "app_storage"), { 
+            users: state.users,
+            courses: newCourses 
+        }, { merge: true });
+    } catch (e) {
+        showNotification("Error saving courses to cloud", "error");
+    }
 }
 
 function showNotification(msg, type = 'info') {
@@ -101,28 +143,28 @@ function showNotification(msg, type = 'info') {
     render();
     setTimeout(() => {
         state.notification = null;
-        render(); // Re-render to remove notification
+        render(); 
     }, 4000);
 }
 
 // --- ACTIONS ---
 
-function setView(viewName) {
+// Make global functions accessible to HTML
+window.setView = function(viewName) {
     state.view = viewName;
-    // Reset temporary states
     state.loginEmail = '';
     state.loginPass = '';
     render();
 }
 
-function handleLogin(e) {
+window.handleLogin = function(e) {
     e.preventDefault();
     const email = state.loginEmail;
     const password = state.loginPass;
 
     if (email === ADMIN_EMAIL && password === ADMIN_PASS) {
         state.currentUser = INITIAL_ADMIN;
-        setView('admin-dash');
+        window.setView('admin-dash');
         return;
     }
 
@@ -131,11 +173,11 @@ function handleLogin(e) {
     if (user) {
         if (user.role === 'admin') {
             state.currentUser = user;
-            setView('admin-dash');
+            window.setView('admin-dash');
         } else {
             if (user.status === 'approved') {
                 state.currentUser = user;
-                setView('student-dash');
+                window.setView('student-dash');
             } else {
                 showNotification("Account Pending Approval from Supervisor.", "error");
             }
@@ -145,7 +187,7 @@ function handleLogin(e) {
     }
 }
 
-function handleSignup(e) {
+window.handleSignup = function(e) {
     e.preventDefault();
     const data = state.signupForm;
 
@@ -156,19 +198,18 @@ function handleSignup(e) {
     const newUser = { ...data, id: Date.now().toString(), role: 'student', status: 'pending', progress: {} };
     saveUsers([...state.users, newUser]);
     showNotification("Registration successful! Waiting for approval.", "success");
-    setView('landing');
+    window.setView('landing');
 }
 
-function handleLogout() {
+window.handleLogout = function() {
     state.currentUser = null;
     state.selectedCourseId = null;
-    setView('landing');
+    window.setView('landing');
 }
 
 // --- COMPONENTS (HTML GENERATORS) ---
 
 function StarBackground() {
-    // Generate static stars html
     let starsHtml = '';
     for(let i=0; i<50; i++) {
         const top = Math.random() * 100;
@@ -267,7 +308,7 @@ function renderLanding() {
     </div>`;
 }
 
-function renderAuth(mode) { // mode: login, login-admin, signup
+function renderAuth(mode) { 
     const title = mode === 'signup' ? 'Student Registration' : mode === 'login-admin' ? 'Supervisor Login' : 'Student Login';
     const isSignup = mode === 'signup';
     const isAdmin = mode === 'login-admin';
@@ -390,7 +431,7 @@ function renderStudentDash() {
     const coursesHtml = state.courses.map((course, idx) => `
         <div class="glass-card rounded-2xl p-6 hover:bg-white/10 transition-colors group cursor-pointer h-full flex flex-col justify-between fade-in-up" 
              style="animation-delay: ${idx * 0.05}s">
-            <div onclick="state.selectedCourseId = '${course.id}'; setView('course-view');">
+            <div onclick="window.setCourse('${course.id}')">
                 <div class="h-12 w-12 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-600/20 flex items-center justify-center mb-4 border border-white/10 group-hover:border-cyan-400/50 transition-colors">
                     <i data-lucide="book-open" class="text-cyan-300 w-6 h-6"></i>
                 </div>
@@ -426,16 +467,27 @@ function renderStudentDash() {
     return renderDashboardLayout(content);
 }
 
+// Global helper for course selection to fix scope issue
+window.setCourse = function(id) {
+    state.selectedCourseId = id;
+    window.setView('course-view');
+}
+
 // --- ADMIN PANELS ---
 
-function adminApproveUser(id) {
+window.adminApproveUser = function(id) {
     const newUsers = state.users.map(u => u.id === id ? { ...u, status: 'approved' } : u);
     saveUsers(newUsers);
 }
 
-function adminDeleteUser(id) {
+window.adminDeleteUser = function(id) {
     const newUsers = state.users.filter(u => u.id !== id);
     saveUsers(newUsers);
+}
+
+window.setAdminTab = function(tab) {
+    state.adminTab = tab;
+    render();
 }
 
 function renderAdminDash() {
@@ -451,7 +503,7 @@ function renderAdminDash() {
     ];
 
     const tabsHtml = tabs.map(t => `
-        <button onclick="state.adminTab = '${t.id}'; render();" 
+        <button onclick="setAdminTab('${t.id}')" 
             class="flex items-center gap-2 px-6 py-3 rounded-xl transition-all ${state.adminTab === t.id ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.2)]' : 'text-slate-400 hover:text-white hover:bg-white/5'}">
             <i data-lucide="${t.icon}" width="18"></i>
             ${t.label}
@@ -549,7 +601,7 @@ function renderAdminDash() {
 }
 
 // Admin Course Manager Logic
-function adminAddMaterial(e) {
+window.adminAddMaterial = function(e) {
     e.preventDefault();
     const courseId = state.selectedCourseId || state.courses[0].id;
     const newMat = { ...state.newMaterial, id: Date.now() };
@@ -566,7 +618,7 @@ function adminAddMaterial(e) {
     saveCourses(updatedCourses);
 }
 
-function adminRemoveMaterial(matId) {
+window.adminRemoveMaterial = function(matId) {
     const courseId = state.selectedCourseId || state.courses[0].id;
     const updatedCourses = state.courses.map(c => {
         if (c.id === courseId) {
@@ -577,6 +629,11 @@ function adminRemoveMaterial(matId) {
     saveCourses(updatedCourses);
 }
 
+window.setAdminCourse = function(id) {
+    state.selectedCourseId = id;
+    render();
+}
+
 function renderAdminCourses() {
     const selectedId = state.selectedCourseId || state.courses[0].id;
     // ensure selectedId is set for next renders
@@ -585,7 +642,7 @@ function renderAdminCourses() {
     const selectedCourse = state.courses.find(c => c.id === selectedId);
 
     const sidebar = state.courses.map(c => `
-        <div onclick="state.selectedCourseId = '${c.id}'; render();"
+        <div onclick="setAdminCourse('${c.id}')"
             class="p-4 rounded-xl cursor-pointer border transition-all mb-2 ${selectedId === c.id ? 'bg-cyan-500/20 border-cyan-500/50 text-white' : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'}">
             <h4 class="font-semibold">${c.title}</h4>
             <div class="text-xs opacity-70 mt-1">${c.materials.length} Materials</div>
@@ -648,7 +705,7 @@ function renderAdminCourses() {
 }
 
 // Admin Exam Builder Logic
-function adminAddQuestion() {
+window.adminAddQuestion = function() {
     const q = state.examBuilder.currQ;
     if(!q.text) return;
     state.examBuilder.questions.push({ ...q, id: Date.now() });
@@ -656,12 +713,12 @@ function adminAddQuestion() {
     render();
 }
 
-function adminRemoveQuestion(id) {
+window.adminRemoveQuestion = function(id) {
     state.examBuilder.questions = state.examBuilder.questions.filter(q => q.id !== id);
     render();
 }
 
-function adminSaveExam() {
+window.adminSaveExam = function() {
     if (!state.examBuilder.title || state.examBuilder.questions.length === 0) return;
     
     const courseId = state.selectedCourseId || state.courses[0].id;
@@ -788,6 +845,11 @@ function renderAdminExams() {
 
 // --- STUDENT COURSE VIEW ---
 
+window.setCourseTab = function(tab) {
+    state.courseViewTab = tab;
+    render();
+}
+
 function renderCourseView() {
     const course = state.courses.find(c => c.id === state.selectedCourseId);
     if (!course) return renderStudentDash(); // Fallback
@@ -853,8 +915,8 @@ function renderCourseView() {
           </div>
 
           <div class="flex gap-4 mb-8">
-            <button onclick="state.courseViewTab = 'materials'; render();" class="${tabBtnClass(state.courseViewTab === 'materials')}">Study Materials</button>
-            <button onclick="state.courseViewTab = 'exams'; render();" class="${tabBtnClass(state.courseViewTab === 'exams')}">Exams & Quizzes</button>
+            <button onclick="setCourseTab('materials')" class="${tabBtnClass(state.courseViewTab === 'materials')}">Study Materials</button>
+            <button onclick="setCourseTab('exams')" class="${tabBtnClass(state.courseViewTab === 'exams')}">Exams & Quizzes</button>
           </div>
           
           ${contentHtml}
@@ -866,21 +928,21 @@ function renderCourseView() {
 
 // --- EXAM RUNNER ---
 
-function startExam(examId) {
+window.startExam = function(examId) {
     const course = state.courses.find(c => c.id === state.selectedCourseId);
     state.activeExam = course.exams.find(e => e.id === examId);
     state.examRunner = { currentQIndex: 0, answers: {}, submitted: false, score: 0 };
     render();
 }
 
-function handleExamAnswer(val) {
+window.handleExamAnswer = function(val) {
     if (state.examRunner.submitted) return;
     const qId = state.activeExam.questions[state.examRunner.currentQIndex].id;
     state.examRunner.answers[qId] = val;
     render();
 }
 
-function submitExam() {
+window.submitExam = function() {
     let s = 0;
     state.activeExam.questions.forEach(q => {
         const ans = state.examRunner.answers[q.id];
@@ -892,6 +954,21 @@ function submitExam() {
     });
     state.examRunner.score = s;
     state.examRunner.submitted = true;
+    render();
+}
+
+window.nextQuestion = function() {
+    state.examRunner.currentQIndex++;
+    render();
+}
+
+window.prevQuestion = function() {
+    state.examRunner.currentQIndex--;
+    render();
+}
+
+window.exitExam = function() {
+    state.activeExam = null;
     render();
 }
 
@@ -963,15 +1040,15 @@ function renderExamRunner() {
 
     const controls = `
         <div class="mt-8 flex justify-between items-center border-t border-white/10 pt-6">
-           <button onclick="state.examRunner.currentQIndex-- ; render()" ${currentQIndex === 0 ? 'disabled class="opacity-30"' : ''} class="px-4 py-2 text-slate-400 hover:text-white">Previous</button>
+           <button onclick="prevQuestion()" ${currentQIndex === 0 ? 'disabled class="opacity-30"' : ''} class="px-4 py-2 text-slate-400 hover:text-white">Previous</button>
 
            ${!submitted ? (
              currentQIndex === exam.questions.length - 1 ? NeonButton({text: "Submit Exam", variant: "success", onClick: "submitExam()"}) 
-             : NeonButton({text: "Next Question", onClick: "state.examRunner.currentQIndex++ ; render()"})
+             : NeonButton({text: "Next Question", onClick: "nextQuestion()"})
            ) : (
              `<div class="flex gap-4 items-center">
                <span class="font-bold text-xl">Score: ${score} / ${exam.questions.length}</span>
-               ${currentQIndex < exam.questions.length - 1 ? NeonButton({text: "Next", onClick: "state.examRunner.currentQIndex++ ; render()"}) : ''}
+               ${currentQIndex < exam.questions.length - 1 ? NeonButton({text: "Next", onClick: "nextQuestion()"}) : ''}
              </div>`
            )}
         </div>
@@ -981,7 +1058,7 @@ function renderExamRunner() {
     <div class="max-w-3xl mx-auto fade-in">
       <div class="flex items-center justify-between mb-8">
         <h2 class="text-2xl font-bold">${exam.title}</h2>
-        <button onclick="state.activeExam = null; render();" class="text-sm text-slate-400 hover:text-white underline">Exit Exam</button>
+        <button onclick="exitExam()" class="text-sm text-slate-400 hover:text-white underline">Exit Exam</button>
       </div>
 
       <div class="mb-6 flex gap-2 overflow-x-auto pb-2">${navDots}</div>
@@ -1023,5 +1100,5 @@ function render() {
     }
 }
 
-// Start the app
+// Start the app (Async Init)
 init();
