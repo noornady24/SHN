@@ -3,13 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minia University - Mathematics Department</title>
+    <title>Minia University - Math Dept</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="bg-slate-950 text-white font-sans selection:bg-cyan-500/30 overflow-x-hidden">
-    <div id="root"></div>
+<body class="bg-slate-950 text-white font-sans selection:bg-cyan-500/30 overflow-hidden">
+
+    <div id="star-background" class="fixed inset-0 z-0 pointer-events-none">
+        <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(76,29,149,0.2),transparent_70%)]"></div>
+        <div class="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[100px]"></div>
+        <div class="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-fuchsia-500/10 rounded-full blur-[100px]"></div>
+        </div>
+
+    <div id="notification-area" class="fixed bottom-8 right-8 z-50 pointer-events-none transition-all duration-300 opacity-0 transform translate-y-10"></div>
+
+    <div id="app" class="relative z-10 h-screen overflow-y-auto scrollbar-thin">
+        </div>
+
     <script type="module" src="script.js"></script>
 </body>
 </html>
